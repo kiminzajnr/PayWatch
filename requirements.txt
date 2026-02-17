@@ -1,0 +1,14 @@
+# Core dependencies
+aiohttp==3.9.1
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Logging
+colorama==0.4.6
+
+# CLI
+click==8.1.7
+
+# Development tools
+pytest==7.4.3
+black==23.12.1
