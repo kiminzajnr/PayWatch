@@ -28,20 +28,21 @@ class EndpointConfig(BaseModel):
     timeout: int = 10
     interval: int = 60
     expected_status: int = 200
-    expected_response_time: int = 1000  # ms
+    expected_response_time: int = 1000  # milliseconds
     
     @field_validator('method')
     @classmethod
-    def validate_method(cls, v):
+    def validate_method(cls, v: str) -> str:
         """Validate HTTP method is allowed"""
         allowed = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS']
-        if v.upper() not in allowed:
+        v_upper = v.upper()
+        if v_upper not in allowed:
             raise ValueError(f'Method must be one of {allowed}')
-        return v.upper()
+        return v_upper
     
     @field_validator('timeout')
     @classmethod
-    def validate_timeout(cls, v):
+    def validate_timeout(cls, v: int) -> int:
         """Validate timeout is positive"""
         if v <= 0:
             raise ValueError('Timeout must be positive')
@@ -49,7 +50,7 @@ class EndpointConfig(BaseModel):
     
     @field_validator('interval')
     @classmethod
-    def validate_interval(cls, v):
+    def validate_interval(cls, v: int) -> int:
         """Validate interval is positive"""
         if v <= 0:
             raise ValueError('Interval must be positive')
@@ -57,7 +58,7 @@ class EndpointConfig(BaseModel):
     
     @field_validator('expected_response_time')
     @classmethod
-    def validate_response_time(cls, v):
+    def validate_response_time(cls, v: int) -> int:
         """Validate response time is positive"""
         if v <= 0:
             raise ValueError('Expected response time must be positive')
@@ -71,7 +72,7 @@ class MetricsConfig(BaseModel):
     
     @field_validator('port')
     @classmethod
-    def validate_port(cls, v):
+    def validate_port(cls, v: int) -> int:
         """Validate port is in valid range"""
         if not (1024 <= v <= 65535):
             raise ValueError('Port must be between 1024 and 65535')
@@ -98,12 +99,13 @@ class PayWatchConfig(BaseModel):
     
     @field_validator('log_level')
     @classmethod
-    def validate_log_level(cls, v):
+    def validate_log_level(cls, v: str) -> str:
         """Validate log level is valid"""
         allowed = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-        if v.upper() not in allowed:
+        v_upper = v.upper()
+        if v_upper not in allowed:
             raise ValueError(f'Log level must be one of {allowed}')
-        return v.upper()
+        return v_upper
 
 
 class ConfigManager:
