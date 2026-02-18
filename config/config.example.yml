@@ -1,0 +1,38 @@
+# Application settings
+service_name: paywatch
+log_level: INFO # DEBUG, INFO, WARNING, ERROR
+
+# Endpoints to monitor
+endpoints:
+  - name: google-homepage
+    url: https://www.google.com
+    method: GET
+    timeout: 5
+    interval: 60 # Check every 60 seconds
+    expected_status: 200
+    expected_response_time: 500 # Milliseconds
+
+  - name: httpbin-status
+    url: https://httpbin.org/status/200
+    method: GET
+    timeout: 10
+    interval: 30
+    expected_status: 200
+    expected_response_time: 1000
+
+  - name: httpbin-slow
+    url: https://httpbin.org/delay/2
+    method: GET
+    timeout: 10
+    interval: 60
+    expected_status: 200
+    expected_response_time: 1500
+
+# Metrics settings
+metrics:
+  enabled: true
+  port: 8000
+
+alerting:
+  enabled: false
+  slack_webhook: null

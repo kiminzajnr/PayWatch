@@ -1,43 +1,60 @@
 """
-PayWatch 
-Main application entry point
+PayWatch - Main Application
 """
 import asyncio
 import signal
 import sys
+from pathlib import Path
 
-from src.utils.logger import logger
+from src.utils.logger import logger, setup_logger
 from src.monitors.simple_checker import SimpleHealthChecker
+from src.config import load_config
 
 
 class PayWatch:
     """Main PayWatch application"""
     
-    def __init__(self):
-        """Initialize application"""
-        self.checkers = []
-        self.running = False
-    
-    def add_checker(self, name, url, timeout=5):
+    def __init__(self, config_path: str = 'config/config.yml'):
         """
-        Add a health checker.
+        Initialize application.
         
         Args:
-            name: Checker name
-            url: URL to check
-            timeout: Timeout in seconds
+            config_path: Path to configuration file
         """
-        checker = SimpleHealthChecker(name, url, timeout)
-        self.checkers.append(checker)
-        logger.info(f"Added checker: {name} -> {url}")
+        # Load configuration
+        self.config = load_config(config_path)
+        
+        # Update logger level
+        global logger
+        logger = setup_logger(level=self.config.log_level)
+        
+        # Initialize checkers from config
+        self.checkers = []
+        for endpoint_config in self.config.endpoints:
+            checker = SimpleHealthChecker(
+                name=endpoint_config.name,
+                url=endpoint_config.url,
+                timeout=endpoint_config.timeout
+            )
+            # Store config for later use
+            checker.config = endpoint_config
+            self.checkers.append(checker)
+            
+            logger.info(
+                f"Registered endpoint: {endpoint_config.name} "
+                f"({endpoint_config.url}, interval={endpoint_config.interval}s)"
+            )
+        
+        self.running = False
+        logger.info(f"PayWatch initialized with {len(self.checkers)} endpoints")
     
     async def run_checks(self):
         """Run all checks once"""
         if not self.checkers:
-            logger.warning("No checkers configured!")
-            return
+            logger.warning("No endpoints configured!")
+            return []
         
-        logger.info(f"Running {len(self.checkers)} checks...")
+        logger.debug(f"Running {len(self.checkers)} health checks...")
         
         # Run all checks concurrently
         tasks = [checker.check() for checker in self.checkers]
@@ -45,36 +62,63 @@ class PayWatch:
         
         return results
     
-    async def run_forever(self, interval=60):
+    async def run_monitoring_loop(self):
         """
-        Run checks continuously.
+        Main monitoring loop.
         
-        Args:
-            interval: Seconds between check cycles
+        Runs checks at configured intervals.
         """
         self.running = True
         
-        logger.info(f"Starting monitoring (interval: {interval}s)")
-        logger.info("Press Ctrl+C to stop\n")
+        # Print startup banner
+        self._print_banner()
+        
+        # Track next check time for each checker
+        import time
+        next_check = {checker: 0 for checker in self.checkers}
         
         try:
             while self.running:
-                # Run checks
-                await self.run_checks()
+                current_time = time.time()
                 
-                # Wait before next cycle
-                logger.info(f"\nWaiting {interval}s until next check...\n")
-                await asyncio.sleep(interval)
+                # Check which monitors are due
+                due_checkers = [
+                    checker for checker in self.checkers
+                    if current_time >= next_check[checker]
+                ]
+                
+                if due_checkers:
+                    # Run due checks
+                    tasks = [checker.check() for checker in due_checkers]
+                    await asyncio.gather(*tasks)
+                    
+                    # Update next check times
+                    for checker in due_checkers:
+                        next_check[checker] = current_time + checker.config.interval
+                
+                # Sleep a bit before checking again
+                await asyncio.sleep(1)
         
         except KeyboardInterrupt:
             logger.info("\nShutdown requested...")
+        finally:
             self.stop()
     
+    def _print_banner(self):
+        """Print startup banner"""
+        print("\n" + "="*60)
+        print(f"  PayWatch - {self.config.service_name}")
+        print("="*60)
+        print(f"  Monitoring: {len(self.checkers)} endpoints")
+        print(f"  Metrics: {'Enabled' if self.config.metrics.enabled else 'Disabled'}")
+        print(f"  Log level: {self.config.log_level}")
+        print("\n  Press Ctrl+C to stop")
+        print("="*60 + "\n")
+    
     def stop(self):
-        """Stop monitoring"""
+        """Stop monitoring and print statistics"""
         self.running = False
         
-        # Print final statistics
         logger.info("\n" + "="*60)
         logger.info("Final Statistics")
         logger.info("="*60 + "\n")
@@ -83,8 +127,6 @@ class PayWatch:
             stats = checker.get_stats()
             logger.info(f"{stats['name']}:")
             logger.info(f"  Total checks: {stats['checks']}")
-            logger.info(f"  Successes: {stats['successes']}")
-            logger.info(f"  Failures: {stats['failures']}")
             logger.info(f"  Success rate: {stats['success_rate']}%")
             logger.info(f"  Avg response time: {stats['avg_response_time_ms']:.0f}ms")
             logger.info("")
@@ -94,23 +136,31 @@ class PayWatch:
 
 def main():
     """Main entry point"""
-    # Create application
-    app = PayWatch()
+    # Allow config path from command line
+    import sys
+    config_path = sys.argv[1] if len(sys.argv) > 1 else 'config/config.yml'
     
-    # Add some endpoints to monitor
-    app.add_checker("Google", "https://www.google.com")
-    app.add_checker("GitHub", "https://github.com")
-    app.add_checker("HTTPBin OK", "https://httpbin.org/status/200")
-    app.add_checker("HTTPBin Slow", "https://httpbin.org/delay/2")
-    app.add_checker("My Portfolio", "https://me-lita.onrender.com/")
-    app.add_checker("Slow", "https://httpbin.org/delay/10")
-    app.add_checker("Fake", "https://this-does-not-exist-xyz123.com")
-    
-    # Run monitoring
     try:
-        asyncio.run(app.run_forever(interval=30))
+        # Create and run application
+        app = PayWatch(config_path)
+        asyncio.run(app.run_monitoring_loop())
+    
+    except FileNotFoundError as e:
+        logger.error(f"Configuration error: {e}")
+        logger.info("\nQuick fix:")
+        logger.info("  cp config/config.example.yml config/config.yml")
+        sys.exit(1)
+    
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        sys.exit(1)
+    
     except KeyboardInterrupt:
         logger.info("Goodbye!")
+    
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

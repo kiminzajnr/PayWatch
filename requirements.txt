@@ -12,3 +12,4 @@ click==8.1.7
 # Development tools
 pytest==7.4.3
 black==23.12.1
+pydantic>=2.10.0
